@@ -381,6 +381,9 @@ class TransactionViewModel(application: Application) : AndroidViewModel(applicat
     fun backupDatabase(context: android.content.Context, outputUri: android.net.Uri) {
         viewModelScope.launch(Dispatchers.IO) {
             try {
+                // Force a WAL checkpoint so all recent data is written to the main file
+                AppDatabase.getDatabase(context).openHelper.writableDatabase.query("PRAGMA wal_checkpoint(FULL);")
+                
                 val dbFile = context.getDatabasePath("finance_database")
                 context.contentResolver.openOutputStream(outputUri)?.use { output ->
                     java.io.FileInputStream(dbFile).use { input ->
@@ -396,14 +399,28 @@ class TransactionViewModel(application: Application) : AndroidViewModel(applicat
     fun restoreDatabase(context: android.content.Context, inputUri: android.net.Uri) {
         viewModelScope.launch(Dispatchers.IO) {
             try {
+                // Close the database to release locks
+                AppDatabase.getDatabase(context).close()
+                
                 val dbFile = context.getDatabasePath("finance_database")
                 context.contentResolver.openInputStream(inputUri)?.use { input ->
                     java.io.FileOutputStream(dbFile).use { output ->
                         input.copyTo(output)
                     }
                 }
-                // After restoring, we should ideally restart the app or recreate the database instance
-                // But as a quick fix we can just exit to force the user to reopen
+                
+                // Delete WAL and SHM files to prevent corruption from old WAL data
+                val walFile = java.io.File(dbFile.path + "-wal")
+                val shmFile = java.io.File(dbFile.path + "-shm")
+                if (walFile.exists()) walFile.delete()
+                if (shmFile.exists()) shmFile.delete()
+
+                // Gracefully restart the app
+                val intent = context.packageManager.getLaunchIntentForPackage(context.packageName)
+                if (intent != null) {
+                    intent.addFlags(android.content.Intent.FLAG_ACTIVITY_CLEAR_TOP or android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                    context.startActivity(intent)
+                }
                 System.exit(0)
             } catch (e: Exception) {
                 e.printStackTrace()

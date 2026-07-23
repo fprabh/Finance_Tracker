@@ -8,6 +8,9 @@ import retrofit2.Retrofit
 import retrofit2.converter.moshi.MoshiConverterFactory
 
 object NetworkClient {
+    // Set this to 1 (true) to enable NAS sync, or 0 (false) to pause all syncing
+    const val IS_SYNC_ENABLED = false
+
     // Updated to point to your Ugreen NAS Tailscale IP
     private const val BASE_URL = "http://100.65.13.3:8000/"
 

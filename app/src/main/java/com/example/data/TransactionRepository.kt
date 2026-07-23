@@ -46,10 +46,12 @@ class TransactionRepository(
 
     suspend fun insertCategory(category: Category): Long {
         val id = categoryDao.insertCategory(category)
-        try {
-            NetworkClient.api.createCategory(category.copy(id = id.toInt()))
-        } catch (e: Exception) {
-            Log.e("Sync", "Failed to push category: ${e.message}")
+        if (NetworkClient.IS_SYNC_ENABLED) {
+            try {
+                NetworkClient.api.createCategory(category.copy(id = id.toInt()))
+            } catch (e: Exception) {
+                Log.e("Sync", "Failed to push category: ${e.message}")
+            }
         }
         return id
     }
@@ -91,6 +93,8 @@ class TransactionRepository(
     }
 
     suspend fun syncFromBackend() {
+        if (!NetworkClient.IS_SYNC_ENABLED) return
+        
         try {
             val categories = NetworkClient.api.getCategories()
             categories.forEach { categoryDao.insertCategory(it) }
