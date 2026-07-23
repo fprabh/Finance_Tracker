@@ -34,6 +34,15 @@ class TransactionViewModel(application: Application) : AndroidViewModel(applicat
             db.statementDao()
         )
         checkAndSeedDefaultCategories()
+        
+        // Automatically sync from NAS when the app opens
+        syncNow()
+    }
+
+    fun syncNow() {
+        viewModelScope.launch(Dispatchers.IO) {
+            repository.syncFromBackend()
+        }
     }
 
     fun forceSeedDefaultCategories() {

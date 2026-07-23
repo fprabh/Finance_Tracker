@@ -1532,6 +1532,16 @@ fun SettingsTabScreen(
         ) {
             Column(modifier = Modifier.padding(16.dp)) {
                 Button(
+                    onClick = { viewModel.syncNow() },
+                    modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.tertiary)
+                ) {
+                    Icon(imageVector = Icons.Rounded.Refresh, contentDescription = null)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Sync with NAS")
+                }
+
+                Button(
                     onClick = { showCsvImportDialog = true },
                     modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)

@@ -1,6 +1,8 @@
 package com.example.data
 
 import kotlinx.coroutines.flow.Flow
+import com.example.data.network.NetworkClient
+import android.util.Log
 
 class TransactionRepository(
     private val transactionDao: TransactionDao,
@@ -43,7 +45,13 @@ class TransactionRepository(
     }
 
     suspend fun insertCategory(category: Category): Long {
-        return categoryDao.insertCategory(category)
+        val id = categoryDao.insertCategory(category)
+        try {
+            NetworkClient.api.createCategory(category.copy(id = id.toInt()))
+        } catch (e: Exception) {
+            Log.e("Sync", "Failed to push category: ${e.message}")
+        }
+        return id
     }
 
     suspend fun getCategoryByName(name: String): Category? {
@@ -80,5 +88,18 @@ class TransactionRepository(
 
     fun getFiltersForCategory(categoryId: Int): Flow<List<CategoryFilter>> {
         return categoryFilterDao.getFiltersForCategory(categoryId)
+    }
+
+    suspend fun syncFromBackend() {
+        try {
+            val categories = NetworkClient.api.getCategories()
+            categories.forEach { categoryDao.insertCategory(it) }
+            
+            val transactions = NetworkClient.api.getTransactions()
+            transactionDao.insertTransactions(transactions)
+            Log.d("Sync", "Successfully synced from backend")
+        } catch (e: Exception) {
+            Log.e("Sync", "Failed to sync with backend: ${e.message}")
+        }
     }
 }
