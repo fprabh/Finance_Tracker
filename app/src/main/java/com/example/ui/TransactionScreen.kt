@@ -2,6 +2,8 @@
 package com.example.ui
 
 import com.example.R
+import java.time.LocalDate
+import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material3.AlertDialog
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.platform.LocalContext
@@ -129,6 +131,15 @@ import com.example.data.Transaction
 import com.example.data.Statement
 import java.time.format.DateTimeFormatter
 import java.util.Locale
+import androidx.compose.material3.DatePicker
+import androidx.compose.material3.DatePickerDialog
+import androidx.compose.material3.DatePickerDefaults
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.rememberDatePickerState
+import androidx.compose.material.icons.rounded.ChevronRight
+import androidx.compose.material.icons.rounded.Analytics
+import java.time.Instant
+import java.time.ZoneId
 
 enum class ScreenDestination(val route: String, val title: String, val icon: ImageVector) {
     Dashboard("dashboard", title = "Dashboard", Icons.Rounded.Dashboard),
@@ -149,8 +160,11 @@ fun TransactionScreen(
     val importStatus by viewModel.importStatus.collectAsState()
     val suggestions by viewModel.uncategorizedDescriptions.collectAsState()
     val isRetroactiveCategorizing by viewModel.isRetroactiveCategorizing.collectAsState()
+    val statements by viewModel.statements.collectAsState()
 
     var transactionToEdit by remember { mutableStateOf<Transaction?>(null) }
+    var showAnalyticsScreen by remember { mutableStateOf(false) }
+    var analyticsPreSelectedCategoryId by remember { mutableStateOf<Int?>(null) }
 
     Scaffold(
         modifier = modifier.fillMaxSize(),
@@ -216,11 +230,34 @@ fun TransactionScreen(
             ) {
                 when (currentScreen) {
                     ScreenDestination.Dashboard -> {
-                        DashboardScreen(
-                            transactions = transactions,
-                            categories = categories,
-                            filters = filters
-                        )
+                        if (showAnalyticsScreen) {
+                            AnalyticsScreen(
+                                transactions = transactions,
+                                categories = categories,
+                                filters = filters,
+                                statements = statements,
+                                preSelectedCategoryId = analyticsPreSelectedCategoryId,
+                                onBack = {
+                                    showAnalyticsScreen = false
+                                    analyticsPreSelectedCategoryId = null
+                                }
+                            )
+                        } else {
+                            DashboardScreen(
+                                transactions = transactions,
+                                categories = categories,
+                                filters = filters,
+                                statements = statements,
+                                onCategoryClick = { categoryId ->
+                                    analyticsPreSelectedCategoryId = categoryId
+                                    showAnalyticsScreen = true
+                                },
+                                onViewAnalyticsClick = {
+                                    analyticsPreSelectedCategoryId = null
+                                    showAnalyticsScreen = true
+                                }
+                            )
+                        }
                     }
                     ScreenDestination.Transactions -> {
                         TransactionsTabScreen(
@@ -252,6 +289,7 @@ fun TransactionScreen(
         TransactionEditDialog(
             transaction = transaction,
             categories = categories,
+            filters = filters,
             viewModel = viewModel,
             onDismiss = { transactionToEdit = null },
             onSaveCategory = { categoryId ->
@@ -356,6 +394,9 @@ fun DashboardScreen(
     transactions: List<Transaction>,
     categories: List<Category>,
     filters: List<CategoryFilter>,
+    statements: List<Statement>,
+    onCategoryClick: (Int?) -> Unit,
+    onViewAnalyticsClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val totalSpend = remember(transactions) {
@@ -386,6 +427,15 @@ fun DashboardScreen(
             .verticalScroll(rememberScrollState())
             .padding(16.dp)
     ) {
+        // Monthly Expenditure Summary
+        if (transactions.isNotEmpty() && statements.isNotEmpty()) {
+            MonthlyExpenditureSummaryCard(
+                transactions = transactions,
+                statements = statements
+            )
+            Spacer(modifier = Modifier.height(16.dp))
+        }
+
         // Main Total Card
         Card(
             modifier = Modifier
@@ -506,7 +556,8 @@ fun DashboardScreen(
                             name = category.name,
                             amount = amount,
                             percentage = percentage,
-                            filterCount = categoryFilters.size
+                            filterCount = categoryFilters.size,
+                            onClick = { onCategoryClick(category.id) }
                         )
                         Spacer(modifier = Modifier.height(14.dp))
                     }
@@ -519,10 +570,33 @@ fun DashboardScreen(
                             amount = uncategorizedTotal,
                             percentage = percentage,
                             filterCount = 0,
-                            isUncategorized = true
+                            isUncategorized = true,
+                            onClick = { onCategoryClick(null) }
                         )
                     }
                 }
+            }
+
+            // View Analytics button
+            Spacer(modifier = Modifier.height(16.dp))
+            Button(
+                onClick = onViewAnalyticsClick,
+                modifier = Modifier.fillMaxWidth(),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.primary
+                ),
+                shape = RoundedCornerShape(16.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.Analytics,
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = "View Full Analytics",
+                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold)
+                )
             }
         }
     }
@@ -534,9 +608,15 @@ fun CategoryDistributionRow(
     amount: Double,
     percentage: Float,
     filterCount: Int,
-    isUncategorized: Boolean = false
+    isUncategorized: Boolean = false,
+    onClick: () -> Unit = {}
 ) {
-    Column(modifier = Modifier.fillMaxWidth()) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(8.dp))
+            .clickable { onClick() }
+    ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -568,6 +648,12 @@ fun CategoryDistributionRow(
                 text = String.format(Locale.US, "$%,.2f", amount),
                 style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
                 color = if (isUncategorized) MaterialTheme.colorScheme.outline else MaterialTheme.colorScheme.onSurface
+            )
+            Icon(
+                imageVector = Icons.Rounded.ChevronRight,
+                contentDescription = "View details",
+                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
+                modifier = Modifier.size(18.dp)
             )
         }
         Spacer(modifier = Modifier.height(6.dp))
@@ -1214,6 +1300,7 @@ fun StatementDetailsScreen(
 ) {
     val txFlow = remember(statement.id) { viewModel.getTransactionsByStatementId(statement.id) }
     val statementTransactions by txFlow.collectAsState(initial = emptyList())
+    var showEditDialog by remember { mutableStateOf(false) }
 
     val brandColor = when(statement.cardType.lowercase()) {
         "scotiabank" -> Color(0xFFEC111A)
@@ -1244,7 +1331,23 @@ fun StatementDetailsScreen(
             Text(
                 text = "${statement.cardType} - ${statement.monthYear}",
                 style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                color = MaterialTheme.colorScheme.onBackground
+                color = MaterialTheme.colorScheme.onBackground,
+                modifier = Modifier.weight(1f)
+            )
+            IconButton(onClick = { showEditDialog = true }) {
+                Icon(
+                    imageVector = Icons.Rounded.Edit,
+                    contentDescription = "Edit Statement",
+                    tint = MaterialTheme.colorScheme.primary
+                )
+            }
+        }
+
+        if (showEditDialog) {
+            StatementEditDialog(
+                statement = statement,
+                viewModel = viewModel,
+                onDismiss = { showEditDialog = false }
             )
         }
 
@@ -1499,6 +1602,8 @@ fun SettingsTabScreen(
     }
 
     var showCsvImportDialog by remember { mutableStateOf(false) }
+    var showDataManagementScreen by remember { mutableStateOf(false) }
+    var showLoadDefaultsConfirm by remember { mutableStateOf(false) }
 
     val context = LocalContext.current
     val backupLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/x-sqlite3")) { uri ->
@@ -1508,92 +1613,131 @@ fun SettingsTabScreen(
         if (uri != null) viewModel.restoreDatabase(context, uri)
     }
 
+    if (showDataManagementScreen) {
+        Column(
+            modifier = modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .padding(16.dp)
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(bottom = 16.dp)) {
+                IconButton(onClick = { showDataManagementScreen = false }) {
+                    Icon(imageVector = Icons.Default.ArrowBack, contentDescription = "Back")
+                }
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("DATA MANAGEMENT", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
+            }
+
+            Card(
+                modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                shape = RoundedCornerShape(16.dp),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.12f))
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Button(
+                        onClick = { viewModel.syncNow() },
+                        modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.tertiary)
+                    ) {
+                        Icon(imageVector = Icons.Rounded.Refresh, contentDescription = null)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Sync with NAS")
+                    }
+
+                    Button(
+                        onClick = { showCsvImportDialog = true },
+                        modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
+                    ) {
+                        Icon(imageVector = Icons.Rounded.UploadFile, contentDescription = null)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Import Categories (CSV)")
+                    }
+
+                    Button(
+                        onClick = { viewModel.reCategorizeAllTransactions() },
+                        modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary)
+                    ) {
+                        Icon(imageVector = Icons.Rounded.Refresh, contentDescription = null)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Re-Categorize All Transactions")
+                    }
+                    
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Button(
+                            onClick = { backupLauncher.launch("finance_database.db") },
+                            modifier = Modifier.weight(1f),
+                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.surfaceVariant, contentColor = MaterialTheme.colorScheme.onSurfaceVariant)
+                        ) {
+                            Icon(imageVector = Icons.Rounded.Save, contentDescription = null)
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Backup")
+                        }
+                        Button(
+                            onClick = { restoreLauncher.launch(arrayOf("*/*")) },
+                            modifier = Modifier.weight(1f),
+                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.surfaceVariant, contentColor = MaterialTheme.colorScheme.onSurfaceVariant)
+                        ) {
+                            Icon(imageVector = Icons.Rounded.Restore, contentDescription = null)
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Restore")
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    Button(
+                        onClick = { showLoadDefaultsConfirm = true },
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
+                    ) {
+                        Icon(imageVector = Icons.Rounded.Lightbulb, contentDescription = null)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Load Default Categories")
+                    }
+                }
+            }
+        }
+
+        if (showLoadDefaultsConfirm) {
+            AlertDialog(
+                onDismissRequest = { showLoadDefaultsConfirm = false },
+                title = { Text("Load Default Categories") },
+                text = { Text("Are you sure you want to load default categories? This might reset or duplicate categories if you have already customized them.") },
+                confirmButton = {
+                    Button(onClick = {
+                        viewModel.forceSeedDefaultCategories()
+                        showLoadDefaultsConfirm = false
+                    }) {
+                        Text("Yes, Load")
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showLoadDefaultsConfirm = false }) {
+                        Text("Cancel")
+                    }
+                }
+            )
+        }
+        return // Return here so we only show the data management screen
+    }
+
     Column(
         modifier = modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
             .padding(16.dp)
     ) {
-        // Data Management Section
-        Text(
-            text = "DATA MANAGEMENT",
-            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-            color = MaterialTheme.colorScheme.onBackground,
-            modifier = Modifier.padding(horizontal = 4.dp, vertical = 8.dp)
-        )
-
-        Card(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(bottom = 16.dp),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-            shape = RoundedCornerShape(16.dp),
-            border = BorderStroke(1.dp, MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.12f))
+        Button(
+            onClick = { showDataManagementScreen = true },
+            modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
+            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondaryContainer, contentColor = MaterialTheme.colorScheme.onSecondaryContainer)
         ) {
-            Column(modifier = Modifier.padding(16.dp)) {
-                Button(
-                    onClick = { viewModel.syncNow() },
-                    modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.tertiary)
-                ) {
-                    Icon(imageVector = Icons.Rounded.Refresh, contentDescription = null)
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("Sync with NAS")
-                }
-
-                Button(
-                    onClick = { showCsvImportDialog = true },
-                    modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
-                ) {
-                    Icon(imageVector = Icons.Rounded.UploadFile, contentDescription = null)
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("Import Categories (CSV)")
-                }
-
-                Button(
-                    onClick = { viewModel.reCategorizeAllTransactions() },
-                    modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary)
-                ) {
-                    Icon(imageVector = Icons.Rounded.Refresh, contentDescription = null)
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("Re-Categorize All Transactions")
-                }
-                
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Button(
-                        onClick = { backupLauncher.launch("finance_database.db") },
-                        modifier = Modifier.weight(1f),
-                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.surfaceVariant, contentColor = MaterialTheme.colorScheme.onSurfaceVariant)
-                    ) {
-                        Icon(imageVector = Icons.Rounded.Save, contentDescription = null)
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text("Backup")
-                    }
-                    Button(
-                        onClick = { restoreLauncher.launch(arrayOf("*/*")) },
-                        modifier = Modifier.weight(1f),
-                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.surfaceVariant, contentColor = MaterialTheme.colorScheme.onSurfaceVariant)
-                    ) {
-                        Icon(imageVector = Icons.Rounded.Restore, contentDescription = null)
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text("Restore")
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(16.dp))
-
-                Button(
-                    onClick = { viewModel.forceSeedDefaultCategories() },
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
-                ) {
-                    Icon(imageVector = Icons.Rounded.Lightbulb, contentDescription = null)
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("Load Default Categories")
-                }
-            }
+            Icon(imageVector = Icons.Rounded.Settings, contentDescription = null)
+            Spacer(modifier = Modifier.width(8.dp))
+            Text("Advanced Data Management")
         }
 
         // Create Filter Card
@@ -2134,16 +2278,32 @@ fun SettingsTabScreen(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TransactionEditDialog(
     transaction: Transaction,
     categories: List<Category>,
+    filters: List<CategoryFilter>,
     viewModel: TransactionViewModel,
     onDismiss: () -> Unit,
     onSaveCategory: (Int?) -> Unit
 ) {
     val dateFormatter = remember { DateTimeFormatter.ofPattern("dd MMMM yyyy", Locale.US) }
     val formattedDate = remember(transaction.date) { transaction.date.format(dateFormatter) }
+
+    var editDescription by remember(transaction) { mutableStateOf(transaction.description) }
+    var editAmount by remember(transaction) { mutableStateOf(transaction.amount.toString()) }
+    var editCardMember by remember(transaction) { mutableStateOf(transaction.cardMember) }
+    
+    val months = remember { listOf("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec") }
+    val years = remember { (2000..2050).map { it.toString() } }
+    val days = remember { (1..31).map { it.toString().padStart(2, '0') } }
+    
+    var selDay by remember(transaction) { mutableStateOf(transaction.date.dayOfMonth.toString().padStart(2, '0')) }
+    var selMonth by remember(transaction) { mutableStateOf(transaction.date.month.name.lowercase().capitalize().take(3)) }
+    var selYear by remember(transaction) { mutableStateOf(transaction.date.year.toString()) }
+
+    var showDeleteConfirm by remember { mutableStateOf(false) }
 
     var selectedCategoryId by remember(transaction.id) { mutableStateOf(transaction.categoryId) }
     var pendingCategoryIdToSave by remember { mutableStateOf<Int?>(null) }
@@ -2176,10 +2336,22 @@ fun TransactionEditDialog(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = "Edit Category",
+                        text = "Edit Transaction",
                         style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
-                        color = MaterialTheme.colorScheme.onSurface
+                        color = MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.weight(1f)
                     )
+                    IconButton(
+                        onClick = { showDeleteConfirm = true },
+                        modifier = Modifier.size(32.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.Delete,
+                            contentDescription = "Delete Transaction",
+                            tint = MaterialTheme.colorScheme.error,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
                     IconButton(
                         onClick = onDismiss,
                         modifier = Modifier.size(32.dp)
@@ -2205,23 +2377,102 @@ fun TransactionEditDialog(
                     Column(modifier = Modifier.padding(16.dp)) {
                         Text(
                             text = "TRANSACTION DETAILS",
-                            style = MaterialTheme.typography.labelSmall.copy(
-                                fontWeight = FontWeight.Bold,
-                                letterSpacing = 0.5.sp
-                            ),
+                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, letterSpacing = 0.5.sp),
                             color = MaterialTheme.colorScheme.primary
                         )
                         Spacer(modifier = Modifier.height(10.dp))
 
-                        DetailItem(label = "Merchant / Description", value = transaction.description)
-                        DetailItem(label = "Date", value = formattedDate)
-                        if (transaction.cardMember.isNotBlank()) {
-                            DetailItem(label = "Card Member", value = transaction.cardMember)
+                        OutlinedTextField(
+                            value = editDescription, onValueChange = { editDescription = it },
+                            label = { Text("Merchant / Description") },
+                            modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
+                            singleLine = true, shape = RoundedCornerShape(8.dp)
+                        )
+                        
+                        var showDatePicker by remember { mutableStateOf(false) }
+                        val initialMillis = remember(transaction) {
+                            transaction.date.atStartOfDay(ZoneId.of("UTC")).toInstant().toEpochMilli()
                         }
-                        DetailItem(
-                            label = "Amount",
-                            value = String.format(Locale.US, "$%,.2f", transaction.amount),
-                            valueColor = if (transaction.amount > 0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface
+
+                        OutlinedTextField(
+                            value = "$selDay $selMonth $selYear",
+                            onValueChange = {},
+                            readOnly = true,
+                            label = { Text("Date") },
+                            trailingIcon = {
+                                Icon(Icons.Rounded.ArrowDropDown, "Select date",
+                                    Modifier.clickable { showDatePicker = true })
+                            },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(bottom = 8.dp)
+                                .clickable { showDatePicker = true },
+                            shape = RoundedCornerShape(8.dp)
+                        )
+
+                        if (showDatePicker) {
+                            val datePickerState = rememberDatePickerState(
+                                initialSelectedDateMillis = initialMillis
+                            )
+                            DatePickerDialog(
+                                onDismissRequest = { showDatePicker = false },
+                                confirmButton = {
+                                    TextButton(onClick = {
+                                        datePickerState.selectedDateMillis?.let { millis ->
+                                            val picked = Instant.ofEpochMilli(millis)
+                                                .atZone(ZoneId.of("UTC"))
+                                                .toLocalDate()
+                                            selDay = picked.dayOfMonth.toString().padStart(2, '0')
+                                            selMonth = picked.month.name.lowercase()
+                                                .replaceFirstChar { c -> c.uppercase() }.take(3)
+                                            selYear = picked.year.toString()
+                                        }
+                                        showDatePicker = false
+                                    }) { Text("OK", color = MaterialTheme.colorScheme.primary) }
+                                },
+                                dismissButton = {
+                                    TextButton(onClick = { showDatePicker = false }) {
+                                        Text("Cancel", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    }
+                                },
+                                colors = DatePickerDefaults.colors(
+                                    containerColor = MaterialTheme.colorScheme.surface
+                                )
+                            ) {
+                                DatePicker(
+                                    state = datePickerState,
+                                    showModeToggle = false,
+                                    colors = DatePickerDefaults.colors(
+                                        containerColor = MaterialTheme.colorScheme.surface,
+                                        titleContentColor = MaterialTheme.colorScheme.onSurface,
+                                        headlineContentColor = MaterialTheme.colorScheme.onSurface,
+                                        weekdayContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        subheadContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        yearContentColor = MaterialTheme.colorScheme.onSurface,
+                                        currentYearContentColor = MaterialTheme.colorScheme.primary,
+                                        selectedYearContentColor = MaterialTheme.colorScheme.onPrimary,
+                                        selectedYearContainerColor = MaterialTheme.colorScheme.primary,
+                                        dayContentColor = MaterialTheme.colorScheme.onSurface,
+                                        selectedDayContentColor = MaterialTheme.colorScheme.onPrimary,
+                                        selectedDayContainerColor = MaterialTheme.colorScheme.primary,
+                                        todayContentColor = MaterialTheme.colorScheme.primary,
+                                        todayDateBorderColor = MaterialTheme.colorScheme.primary
+                                    )
+                                )
+                            }
+                        }
+
+                        OutlinedTextField(
+                            value = editCardMember, onValueChange = { editCardMember = it },
+                            label = { Text("Card Member") },
+                            modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
+                            singleLine = true, shape = RoundedCornerShape(8.dp)
+                        )
+                        OutlinedTextField(
+                            value = editAmount, onValueChange = { editAmount = it },
+                            label = { Text("Amount") },
+                            modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
+                            singleLine = true, shape = RoundedCornerShape(8.dp)
                         )
                     }
                 }
@@ -2230,6 +2481,15 @@ fun TransactionEditDialog(
 
                 // Conflict Alert if any
                 if (transaction.hasConflict) {
+                    val conflictingMatches = remember(transaction.description, filters, categories) {
+                        filters.filter { filter ->
+                            transaction.description.contains(filter.keyword, ignoreCase = true)
+                        }.mapNotNull { filter ->
+                            val cat = categories.find { it.id == filter.categoryId }
+                            if (cat != null) Pair(cat.name, filter.keyword) else null
+                        }.distinctBy { it.first to it.second }
+                    }
+
                     Surface(
                         color = MaterialTheme.colorScheme.errorContainer,
                         shape = RoundedCornerShape(12.dp),
@@ -2237,21 +2497,51 @@ fun TransactionEditDialog(
                             .fillMaxWidth()
                             .padding(bottom = 16.dp)
                     ) {
-                        Row(
-                            modifier = Modifier.padding(12.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Icon(
-                                imageVector = Icons.Rounded.Warning,
-                                contentDescription = "Conflict Icon",
-                                tint = MaterialTheme.colorScheme.error,
-                                modifier = Modifier.size(20.dp)
-                            )
-                            Spacer(modifier = Modifier.width(10.dp))
+                        Column(modifier = Modifier.padding(12.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    imageVector = Icons.Rounded.Warning,
+                                    contentDescription = "Conflict Icon",
+                                    tint = MaterialTheme.colorScheme.error,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                                Spacer(modifier = Modifier.width(10.dp))
+                                Text(
+                                    text = "Multiple keyword filters matched:",
+                                    style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold),
+                                    color = MaterialTheme.colorScheme.onErrorContainer
+                                )
+                            }
+                            Spacer(modifier = Modifier.height(8.dp))
+                            conflictingMatches.forEach { (categoryName, keyword) ->
+                                Row(
+                                    modifier = Modifier.padding(start = 30.dp, bottom = 4.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = "\u2022",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.error
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(
+                                        text = categoryName,
+                                        style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold),
+                                        color = MaterialTheme.colorScheme.onErrorContainer
+                                    )
+                                    Text(
+                                        text = " \u2014 keyword \"$keyword\"",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onErrorContainer.copy(alpha = 0.8f)
+                                    )
+                                }
+                            }
+                            Spacer(modifier = Modifier.height(4.dp))
                             Text(
-                                text = "Multiple matching keyword filters matched this description. Manually assign a category below to resolve.",
+                                text = "Manually assign a category below to resolve.",
                                 style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Medium),
-                                color = MaterialTheme.colorScheme.onErrorContainer
+                                color = MaterialTheme.colorScheme.onErrorContainer.copy(alpha = 0.7f),
+                                modifier = Modifier.padding(start = 30.dp)
                             )
                         }
                     }
@@ -2372,9 +2662,53 @@ fun TransactionEditDialog(
                     TextButton(onClick = onDismiss) {
                         Text("CANCEL")
                     }
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Button(onClick = {
+                        val newAmount = editAmount.toDoubleOrNull() ?: transaction.amount
+                        val monthIndex = months.indexOfFirst { it.equals(selMonth, ignoreCase = true) } + 1
+                        val newDate = try {
+                            LocalDate.of(selYear.toInt(), monthIndex, selDay.toInt())
+                        } catch (e: Exception) { transaction.date }
+                        
+                        val updatedTx = transaction.copy(
+                            description = editDescription,
+                            amount = newAmount,
+                            cardMember = editCardMember,
+                            date = newDate
+                        )
+                        viewModel.updateTransactionFull(updatedTx)
+                        onDismiss()
+                    }) {
+                        Text("SAVE")
+                    }
                 }
             }
         }
+    }
+
+    if (showDeleteConfirm) {
+        AlertDialog(
+            onDismissRequest = { showDeleteConfirm = false },
+            title = { Text("Delete Transaction") },
+            text = { Text("Are you sure you want to delete this transaction? This action cannot be undone.") },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        viewModel.deleteTransaction(transaction)
+                        showDeleteConfirm = false
+                        onDismiss()
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                ) {
+                    Text("Delete")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteConfirm = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
     }
 
     // Auto-Categorization rule generation popup dialog
@@ -2723,8 +3057,130 @@ fun DashboardScreenPreview() {
                     com.example.data.Category(id = 1, name = "Groceries"),
                     com.example.data.Category(id = 2, name = "Entertainment")
                 ),
-                filters = emptyList()
+                filters = emptyList(),
+                statements = emptyList(),
+                onCategoryClick = {},
+                onViewAnalyticsClick = {}
             )
         }
+    }
+}
+
+@Composable
+fun StatementEditDialog(
+    statement: Statement,
+    viewModel: TransactionViewModel,
+    onDismiss: () -> Unit
+) {
+    var editPrevBalance by remember(statement) { mutableStateOf(statement.previousBalance.toString()) }
+    var editPayments by remember(statement) { mutableStateOf(statement.paymentsAndCredits.toString()) }
+    var editInterest by remember(statement) { mutableStateOf(statement.interestPaid.toString()) }
+    var editStmtBalance by remember(statement) { mutableStateOf(statement.statementBalance.toString()) }
+
+    // Visual scroll date picker (two dropdowns: Month and Year)
+    val months = remember { listOf("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec") }
+    val years = remember { (2000..2050).map { it.toString() } }
+    
+    val initialParts = statement.monthYear.split(" ")
+    var selMonth by remember(statement) { mutableStateOf(if (initialParts.size >= 2) initialParts[0] else "Jan") }
+    var selYear by remember(statement) { mutableStateOf(if (initialParts.size >= 2) initialParts.last() else "2024") }
+
+    var showDeleteConfirm by remember { mutableStateOf(false) }
+
+    Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+        Surface(
+            modifier = Modifier.fillMaxWidth(0.92f).widthIn(max = 500.dp).wrapContentHeight(),
+            shape = RoundedCornerShape(28.dp), color = MaterialTheme.colorScheme.surface, tonalElevation = 6.dp
+        ) {
+            Column(modifier = Modifier.padding(24.dp).verticalScroll(rememberScrollState())) {
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                    Text("Edit Statement", style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold), color = MaterialTheme.colorScheme.onSurface, modifier = Modifier.weight(1f))
+                    IconButton(
+                        onClick = { showDeleteConfirm = true },
+                        modifier = Modifier.size(32.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.Delete,
+                            contentDescription = "Delete Statement",
+                            tint = MaterialTheme.colorScheme.error,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                }
+                Spacer(modifier = Modifier.height(16.dp))
+                
+                Row(modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    var monthExpanded by remember { mutableStateOf(false) }
+                    Box(modifier = Modifier.weight(1f)) {
+                        OutlinedTextField(
+                            value = selMonth, onValueChange = {}, readOnly = true, label = { Text("Month") },
+                            trailingIcon = { Icon(Icons.Rounded.ArrowDropDown, "dropdown", Modifier.clickable { monthExpanded = true }) },
+                            modifier = Modifier.fillMaxWidth().clickable { monthExpanded = true }, shape = RoundedCornerShape(8.dp)
+                        )
+                        DropdownMenu(expanded = monthExpanded, onDismissRequest = { monthExpanded = false }, modifier = Modifier.heightIn(max = 200.dp)) {
+                            months.forEach { m -> DropdownMenuItem(text = { Text(m) }, onClick = { selMonth = m; monthExpanded = false }) }
+                        }
+                    }
+                    var yearExpanded by remember { mutableStateOf(false) }
+                    Box(modifier = Modifier.weight(1f)) {
+                        OutlinedTextField(
+                            value = selYear, onValueChange = {}, readOnly = true, label = { Text("Year") },
+                            trailingIcon = { Icon(Icons.Rounded.ArrowDropDown, "dropdown", Modifier.clickable { yearExpanded = true }) },
+                            modifier = Modifier.fillMaxWidth().clickable { yearExpanded = true }, shape = RoundedCornerShape(8.dp)
+                        )
+                        DropdownMenu(expanded = yearExpanded, onDismissRequest = { yearExpanded = false }, modifier = Modifier.heightIn(max = 200.dp)) {
+                            years.forEach { y -> DropdownMenuItem(text = { Text(y) }, onClick = { selYear = y; yearExpanded = false }) }
+                        }
+                    }
+                }
+
+                OutlinedTextField(value = editPrevBalance, onValueChange = { editPrevBalance = it }, label = { Text("Previous Balance") }, modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp), singleLine = true, shape = RoundedCornerShape(8.dp))
+                OutlinedTextField(value = editPayments, onValueChange = { editPayments = it }, label = { Text("Payments & Credits") }, modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp), singleLine = true, shape = RoundedCornerShape(8.dp))
+                OutlinedTextField(value = editInterest, onValueChange = { editInterest = it }, label = { Text("Interest Paid") }, modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp), singleLine = true, shape = RoundedCornerShape(8.dp))
+                OutlinedTextField(value = editStmtBalance, onValueChange = { editStmtBalance = it }, label = { Text("Statement Balance") }, modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp), singleLine = true, shape = RoundedCornerShape(8.dp))
+
+                Spacer(modifier = Modifier.height(24.dp))
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                    TextButton(onClick = onDismiss) { Text("CANCEL") }
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Button(onClick = {
+                        val updated = statement.copy(
+                            monthYear = "$selMonth $selYear",
+                            previousBalance = editPrevBalance.toDoubleOrNull() ?: statement.previousBalance,
+                            paymentsAndCredits = editPayments.toDoubleOrNull() ?: statement.paymentsAndCredits,
+                            interestPaid = editInterest.toDoubleOrNull() ?: statement.interestPaid,
+                            statementBalance = editStmtBalance.toDoubleOrNull() ?: statement.statementBalance
+                        )
+                        viewModel.updateStatement(updated)
+                        onDismiss()
+                    }) { Text("SAVE") }
+                }
+            }
+        }
+    }
+
+    if (showDeleteConfirm) {
+        AlertDialog(
+            onDismissRequest = { showDeleteConfirm = false },
+            title = { Text("Delete Statement") },
+            text = { Text("Are you sure you want to delete this statement AND all its associated transactions? This action cannot be undone.") },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        viewModel.deleteStatement(statement)
+                        showDeleteConfirm = false
+                        onDismiss()
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                ) {
+                    Text("Delete")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteConfirm = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
     }
 }

@@ -267,6 +267,30 @@ class TransactionViewModel(application: Application) : AndroidViewModel(applicat
         }
     }
 
+    fun updateTransactionFull(transaction: Transaction) {
+        viewModelScope.launch(Dispatchers.IO) {
+            repository.updateTransaction(transaction)
+        }
+    }
+
+    fun updateStatement(statement: Statement) {
+        viewModelScope.launch(Dispatchers.IO) {
+            repository.updateStatement(statement)
+        }
+    }
+
+    fun deleteTransaction(transaction: Transaction) {
+        viewModelScope.launch(Dispatchers.IO) {
+            repository.deleteTransaction(transaction)
+        }
+    }
+
+    fun deleteStatement(statement: Statement) {
+        viewModelScope.launch(Dispatchers.IO) {
+            repository.deleteStatement(statement)
+        }
+    }
+
     // Add filter keyword for category
     fun addCategoryFilter(categoryId: Int, keyword: String) {
         viewModelScope.launch(Dispatchers.IO) {

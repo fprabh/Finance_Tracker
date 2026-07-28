@@ -35,4 +35,10 @@ interface TransactionDao {
 
     @Update
     suspend fun updateTransaction(transaction: Transaction)
+
+    @androidx.room.Delete
+    suspend fun deleteTransaction(transaction: Transaction)
+
+    @Query("DELETE FROM `Transaction` WHERE statementId = :statementId")
+    suspend fun deleteTransactionsByStatementId(statementId: Long)
 }

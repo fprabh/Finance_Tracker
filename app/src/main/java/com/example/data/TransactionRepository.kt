@@ -24,6 +24,15 @@ class TransactionRepository(
         return statementDao.insertStatement(statement)
     }
 
+    suspend fun updateStatement(statement: Statement) {
+        statementDao.updateStatement(statement)
+    }
+
+    suspend fun deleteStatement(statement: Statement) {
+        transactionDao.deleteTransactionsByStatementId(statement.id)
+        statementDao.deleteStatement(statement)
+    }
+
     fun getTransactionsByStatementId(statementId: Long): Flow<List<Transaction>> {
         return transactionDao.getTransactionsByStatementId(statementId)
     }
@@ -42,6 +51,10 @@ class TransactionRepository(
 
     suspend fun updateTransaction(transaction: Transaction) {
         transactionDao.updateTransaction(transaction)
+    }
+
+    suspend fun deleteTransaction(transaction: Transaction) {
+        transactionDao.deleteTransaction(transaction)
     }
 
     suspend fun insertCategory(category: Category): Long {
